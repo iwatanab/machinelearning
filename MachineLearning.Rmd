@@ -1,0 +1,128 @@
+---
+title: "Machine Learning Assignment"
+author: "Isa Watanabe"
+date: "August 27, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+
+## Getting the data
+
+```{r}
+#Download the data
+if(!file.exists("./data")){dir.create("./data")}
+trainingUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingUrl <-  "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(trainingUrl, destfile = "./data/training.csv")
+download.file(testingUrl, destfile = "./data/testing.csv")
+
+#Create training and testing data sets
+training <- read.csv(file = "./data/training.csv", header = TRUE, na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(file = "./data/testing.csv", header = TRUE, na.strings=c("NA","#DIV/0!",""))
+```
+
+## Loading required packages
+```{r}
+library(caret)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(kernlab)
+```
+
+##Cleaning the Training Data
+
+###NZV Variables, PCA, Remove some Cols
+Remove NonZeroVariance Varaibles
+```{r}
+dim(training)
+```
+
+```{r}
+NZV <- nearZeroVar(training, saveMetrics = TRUE)
+
+training <- subset(training, select = -(which(NZV$zeroVar == TRUE | NZV$nzv == TRUE)))
+
+dim(training)
+```
+
+###Remove the row index and subject names (the model should be able to predict exercise class without knowing the specific subject) + other vars
+
+```{r}
+#Get column indexes for columns to remove
+toRem <- na.omit(c(        
+        match('X', names(training)), 
+        match('user_name', names(training)), 
+        match('raw_timestamp_part_1', names(training)),
+        match('raw_timestamp_part_2',names(training)), 
+        match('cvtd_timestamp', names(training)),
+        match('new_window', names(training)),
+        match('num_window', names(training))))
+training <- subset(training, select = -c(toRem))
+
+dim(training)
+
+```
+
+###Remove Features with over 50% NAs
+```{r}
+naVars <- c(NA)
+for(i in 1:length(training)){
+        if(sum(is.na(training[,i]))/length(training[,i]) >= 0.5) {
+               naVars[i] <- i
+        }
+}
+
+naVars <- na.omit(naVars)
+training <- subset(training, select = -c(naVars))
+
+
+dim(training)
+```
+
+```{r}
+names(training)
+```
+
+##Coerce All Columns to Numeric Data Type
+```{r}
+for(i in 1:(length(training)-1)){
+        training[,i] <- as.numeric(training[,i])
+        
+}
+
+```
+
+##Create Training and Testing data sets
+```{r}
+#We need to split the Training Dataset into a training and testing dataset
+set.seed(346)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list = FALSE)
+modTrain <- training[inTrain,]
+modTest <- training[-inTrain,]
+```
+
+##Building our Model
+I chose to use a decison tree tocreate my model. Honestly, random forests took too long to run.
+```{r}
+modrpart <- rpart(classe ~ ., data=modTrain, method="class")
+fancyRpartPlot(modrpart)
+
+```
+
+##Assessing Accuracy
+Let's take a look at how accurate our model is
+```{r}
+predrpart <- predict(modrpart,  modTest, type = "class")
+accrpart <- confusionMatrix(predrpart, modTest$classe)$overall[1]
+accrpart
+```
+It looks like our model has a ~75% accuracy on our testing set.
